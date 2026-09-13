@@ -11,8 +11,8 @@ include(Resources.idRelative("mtr:panto/scripts/dynamic_panto_lib.js"));
 // ============================================================================
 // GENERAL PANTOGRAPH CONFIG
 // ============================================================================
-var PANTO_MODEL_PATH = "mtr:panto/abb_panto.obj"; // Pantograph OBJ file path Example: var PANTO_MODEL_PATH = "mtr:panto/abb_panto.obj"
-var PANTO_MODEL_NAME = "ABB SGP Panto";           // Display label (can be any string) Example: var PANTO_MODEL_NAME = "ABB SGP Panto"
+var PANTO_MODEL_PATH = ""; // Pantograph OBJ file path Example: var PANTO_MODEL_PATH = "mtr:panto/EXAMPLE_panto.obj"
+var PANTO_MODEL_NAME = "";           // Display label (can be any string) Example: var PANTO_MODEL_NAME = "My cool Panto"
 
 var WIRE_TRACKING_REFERENCE = 1.4851; // REFERENCE - wire tracking is calculated relative to this value
 var NO_WIRE_PARK_HEIGHT = 1.366;      // Fixed height the pantograph rests at when there's no wire
@@ -23,7 +23,7 @@ var DEPOT_PARK_HEIGHT = 0.4;          // Lowered pantograph height when train is
 // ============================================================================
 // PANTOGRAPH VEHICLE CONFIG
 // 
-// DO NOT FORGET TO ADD "scriptId" TO YOUR VEHICLES IN custom_resources.json!
+// DO NOT FORGET TO ADD "scriptId" TO YOUR VEHICLES IN mtr_custom_resources.json!
 //
 // Only vehicles whose ID matches one of the keys below get a pantograph.
 // Adding a new train car that needs a pantograph is just adding one more
@@ -41,14 +41,14 @@ var DEPOT_PARK_HEIGHT = 0.4;          // Lowered pantograph height when train is
 //                   not the roof mount)
 // ============================================================================
 var PANTO_VEHICLE_CONFIG = {
-    "ABB_SGP_TRAILER_1": {
+    "YOUR_VEHICLE_ID_1": {
         mountHeight: 2.53,
         mountX: 0,
         mountZ: 1.875,
         rotationYDeg: 180,
         wireDetectZ: 1.92,
     },
-    "ABB_SGP_TRAILER_2": {
+    "YOUR_VEHICLE_ID_2": {
         mountHeight: 2.53,
         mountX: 0,
         mountZ: -1.875,
