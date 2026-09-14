@@ -212,7 +212,7 @@ print("PAW catenary system: " + (PAW_POSSIBILITY_FLAG ? "found, active" : "not f
 if (!PAW_POSSIBILITY_FLAG) {
 	try {
 		MinecraftClient.displayMessage(
-			"[Pantograph] 'Pantographs & Wires' mod isn't installed, or JCM's script restrictions are blocking it. If you need PAW support, set disableScriptRestrictions = true in config/jsblock/client.toml (or JCM in-game settings) and restart.",
+			"[Pantograph] 'Pantographs & Wires' mod isn't installed, or JCM's script restrictions are blocking it. If you need PAW support, set disableScriptRestrictions = true in config/jsblock/client.toml and restart.",
 			false
 		);
 	} catch (e) {}
