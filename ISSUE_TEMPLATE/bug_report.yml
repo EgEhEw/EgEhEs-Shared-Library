@@ -1,0 +1,60 @@
+name: Bug Report
+description: Report an issue with logs, operating system details, and steps.
+title: "[BUG]: "
+labels: ["NEW"]
+body:
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating System
+      description: Select your operating system.
+      options:
+        - Windows
+        - Linux
+    validations:
+      required: true
+
+  - type: textarea
+    id: current-behavior
+    attributes:
+      label: Current Behavior (What is happening?)
+      description: Provide a clear summary of what is currently happening.
+      placeholder: Describe the current issue...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected-behavior
+    attributes:
+      label: Expected Behavior (What should happen?)
+      description: Provide a clear summary of what you expected to happen.
+      placeholder: Describe the expected behavior...
+    validations:
+      required: true
+
+  - type: textarea
+    id: minecraft-log
+    attributes:
+      label: Minecraft Latest Log Content
+      description: Paste the content of your latest.log or crash report here.
+      render: text
+      placeholder: Paste latest.log content here...
+    validations:
+      required: true
+
+  - type: textarea
+    id: extra-notes
+    attributes:
+      label: Extra Notes
+      description: Add any additional context, notes, or details here.
+      placeholder: Any extra information...
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: confirmation
+    attributes:
+      label: Confirmation
+      options:
+        - label: I confirm that I have filled in all the information above correctly.
+          required: true
