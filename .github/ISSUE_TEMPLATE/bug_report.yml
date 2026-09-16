@@ -32,13 +32,13 @@ body:
     validations:
       required: true
 
-  - type: textarea
+- type: textarea
     id: minecraft-log
     attributes:
       label: Minecraft Latest Log Content
-      description: Paste the content of your latest.log or crash report here.
-      render: text
-      placeholder: Paste latest.log content here...
+      description: Paste your latest.log / crash report content, drag & drop the log file into this box, or attach a mclo.gs link.
+      render: log
+      placeholder: Paste log content, drop latest.log file here, or paste a mclo.gs link...
     validations:
       required: true
 
