@@ -16,7 +16,7 @@ The original dynamic pantograph library was developed by [HarryTheCat](https://g
 
 Just two, both go in `assets/mtr/panto/scripts/`:
 
-- **`dynamic_panto_lib.js`** — the actual math: catenary detection (MSD + PAW fallback), the pantograph render/model utilities (these used to live in a separate `harrys_lib.js`, now folded in). You shouldn't need to touch this.
+- **`dynamic_panto_lib.js`** — This is the main library script that enables the pantograph to function. I wouldn't recommend changing anything here unless you really know what you're doing.
 - **`EXAMPLE_pantograph.js`** — the per-train config and render entrypoint. This is the one you edit.
 
 ## Setup
@@ -39,7 +39,7 @@ Reading PAW's catenary data needs raw Java class access that JCM blocks by defau
 disableScriptRestrictions = true
 ```
 
-in `config/jsblock/client.toml` (or the same toggle in JCM's settings menu), then restart. Without it, MSD still works fine — the pantograph just can't fall back to PAW, and you'll get a one-time heads-up in chat about it.
+in `config/jsblock/client.toml` (or the same toggle in JCM's settings menu), then restart. Without it, MSD still works fine the pantograph just can't fall back to PAW, and you'll get a one-time heads-up in chat about it.
 
 ## Configuring vehicles
 
@@ -65,9 +65,10 @@ var PANTO_VEHICLE_CONFIG = {
 Any vehicle whose ID contains one of these keys (not case-sensitive) gets a pantograph. Everything else doesn't. Adding a new car is one new entry, nothing else to touch.
 
 ## The two helper scripts (not deployed, run locally)
-- These are the two scripts I mentioned earlier—p1, p2, p3, and pbase—that solve the pivot issue.
-- **WARNING: For now, they only work on files converted from the Blockbench model to OBJ format. They will not work on OBJ files that are not .bbmodel files!**
 
+- **WARNING: For now, they only work on files converted from the Blockbench model to OBJ format. They will not work on OBJ files that are not .bbmodel files!**
+- You need [Node.js](https://nodejs.org/en/download) for the scripts to run!
+- These are the two scripts I mentioned earlier—p1, p2, p3, and pbase—that solve the pivot issue.
 **`objgroupfix.js`** — Blockbench's OBJ export drops the group/folder structure; every cube just comes out as a flat `o <name>` line. This script reads the actual groups back out of the `.bbmodel` and writes `g <group>` lines into the exported `.obj`, so anything reading parts by group name (`ModelManager.loadModelParts`, for instance) sees the right groups.
 
 ```bash
