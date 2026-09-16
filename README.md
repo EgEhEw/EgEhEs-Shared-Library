@@ -68,20 +68,21 @@ Any vehicle whose ID contains one of these keys (not case-sensitive) gets a pant
 
 - **WARNING: For now, they only work on files converted from the Blockbench model to OBJ format. They will not work on OBJ files that are not .bbmodel files!**
 - You need [Node.js](https://nodejs.org/en/download) for the scripts to run!
-- These are the two scripts I mentioned earlier—p1, p2, p3, and pbase—that solve the pivot issue.
-**`objgroupfix.js`** — Blockbench's OBJ export drops the group/folder structure; every cube just comes out as a flat `o <name>` line. This script reads the actual groups back out of the `.bbmodel` and writes `g <group>` lines into the exported `.obj`, so anything reading parts by group name (`ModelManager.loadModelParts`, for instance) sees the right groups.
+- These are the two scripts I mentioned earlier p1, p2 and p3 that solve the pivot issue.
+
+**`objgroupfix.js`** - For some reason, when Blockbench exports in .obj format, it doesn’t split the models into obj groups based on the p1, p2, p3, and pbase folders you’ve placed in the your blockbench model. This script, however, examines the Blockbench model, locates the models in the p1, p2, p3, and pbase folders, and regroup them accordingly. Without this script, the pantograph arm won’t work. And running `pivotfix.js` without performing this step is strongly not recommended.
 
 ```bash
 node objgroupfix.js model.bbmodel model.obj [output.obj]
 ```
 
-**`pivotfix.js`** — pulls each part's pivot straight from the `.bbmodel` group origins, patches the `matrices.translate(...)` pairs in your pantograph script to match, and regenerates the inverse kinematics block (arm lengths, base angles) from the same data. Re-run it any time you reshape the model and the script stays accurate — no manual math.
+**`pivotfix.js`** - pulls each part's pivot straight from the `.bbmodel` group origins, patches the `matrices.translate(...)` pairs in your pantograph script to match, and regenerates the inverse kinematics block (arm lengths, base angles) from the same data. Re-run it any time you reshape the model and the script stays accurate no manual math.
 
 ```bash
 node pivotfix.js model.bbmodel EXAMPLE_pantograph.js [output.js]
 ```
 
-Both back up the original file before writing (`.bak`), and only touch the specific blocks they generate — safe to run repeatedly.
+Both back up the original file before writing (`.bak`), and only touch the specific blocks they generate safe to run repeatedly.
 
 ## License
 
