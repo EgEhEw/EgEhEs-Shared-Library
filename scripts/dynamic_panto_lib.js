@@ -209,13 +209,84 @@ function getGlobalPosFromLocalCoords(train, posLoc, i) {
 var PAW_POSSIBILITY_FLAG = checkIfPawDoable();
 print("PAW catenary system: " + (PAW_POSSIBILITY_FLAG ? "found, active" : "not found, disabled"));
 
-if (!PAW_POSSIBILITY_FLAG) {
+var _pawWarningShown = false;
+
+function checkAndWarnPawSupport() {
+	if (_pawWarningShown) return;
+	if (!PAW_POSSIBILITY_FLAG && isMinecraft1201()) {
+		try {
+			if (typeof MinecraftClient !== "undefined") {
+				MinecraftClient.displayMessage(
+					"[Pantograph] 'Pantographs & Wires' mod isn't installed, or JCM's script restrictions are blocking it. If you need PAW support, set disableScriptRestrictions = true in config/jsblock/client.toml (or JCM in-game settings) and restart.",
+					false
+				);
+				if (typeof MinecraftClient.localPlayer === "function" && MinecraftClient.localPlayer() != null) {
+					_pawWarningShown = true;
+				}
+			}
+		} catch (e) {}
+	}
+}
+
+// Initial check when script loads
+checkAndWarnPawSupport();
+
+function isMinecraft1201() {
+	// 1. JCM Resources API (Whitelisted & ALWAYS accessible even when script restrictions are active)
 	try {
-		MinecraftClient.displayMessage(
-			"[Pantograph] 'Pantographs & Wires' mod isn't installed, or JCM's script restrictions are blocking it. If you need PAW support, set disableScriptRestrictions = true in config/jsblock/client.toml and restart.",
-			false
-		);
+		if (typeof Resources !== "undefined") {
+			if (typeof Resources.getAddonVersion === "function") {
+				var jcmVer = Resources.getAddonVersion("jcm");
+				if (jcmVer && String(jcmVer).indexOf("1.20.1") !== -1) return true;
+			}
+			if (typeof Resources.getNTEVersion === "function") {
+				var nteVer = Resources.getNTEVersion();
+				if (nteVer && String(nteVer).indexOf("1.20.1") !== -1) return true;
+			}
+			if (typeof Resources.getMTRVersion === "function") {
+				var mtrVer = Resources.getMTRVersion();
+				if (mtrVer && String(mtrVer).indexOf("1.20.1") !== -1) return true;
+			}
+		}
 	} catch (e) {}
+
+	// 2. Fabric Loader API (when script restrictions are disabled)
+	try {
+		var fl = Packages.net.fabricmc.loader.api.FabricLoader.getInstance();
+		if (fl) {
+			var mc = fl.getModContainer("minecraft");
+			if (mc && mc.isPresent()) {
+				var v = String(mc.get().getMetadata().getVersion().getFriendlyString());
+				return v === "1.20.1";
+			}
+		}
+	} catch (e) {}
+
+	// 3. Forge Loader API (FMLLoader)
+	try {
+		var fml = Packages.net.minecraftforge.fml.loading.FMLLoader.versionInfo().mcVersion();
+		if (fml) {
+			return String(fml) === "1.20.1";
+		}
+	} catch (e) {}
+
+	// 4. NeoForge Loader API
+	try {
+		var neo = Packages.net.neoforged.fml.loading.FMLLoader.versionInfo().mcVersion();
+		if (neo) {
+			return String(neo) === "1.20.1";
+		}
+	} catch (e) {}
+
+	// 5. Vanilla SharedConstants fallback
+	try {
+		var sc = Packages.net.minecraft.SharedConstants.getCurrentVersion().getName();
+		if (sc) {
+			return String(sc) === "1.20.1";
+		}
+	} catch (e) {}
+
+	return false;
 }
 
 function checkIfPawDoable() {
@@ -227,47 +298,110 @@ function checkIfPawDoable() {
 	}
 }
 
-// This pack runs on Forge/NeoForge (also loads Fabric mods via Connector).
-// In a Forge production environment the vanilla Minecraft class's METHODS are
-// named with SRG (obfuscated) names - not "getInstance" but "m_91087_", not
-// "level" but "f_91073_". Try SRG first, then fall back to the clean names /
-// Yarn in case of a different loader/mapping. Whichever works gets cached,
-// so subsequent calls use it directly without re-probing.
+// Level and BlockPos helpers supporting both Forge (SRG/Mojmap) and Fabric (Intermediary/Yarn)
 var _mcClientLevelGetter = null;
+var _blockPosFactory = null;
 
 function getMcClientLevel() {
 	if (_mcClientLevelGetter !== null) {
 		return _mcClientLevelGetter();
 	}
 
+	// 1. MTR Mapping layer (Works on BOTH Fabric & Forge, returns unwrapped Minecraft World/Level via .data)
 	try {
-		let inst = Packages.net.minecraft.client.Minecraft.m_91087_();
-		if (inst) {
-			_mcClientLevelGetter = function() { return Packages.net.minecraft.client.Minecraft.m_91087_().f_91073_; };
+		var mtrClient = Packages.org.mtr.mapping.holder.MinecraftClient.getInstance();
+		if (mtrClient && mtrClient.getWorldMapped()) {
+			_mcClientLevelGetter = function() {
+				return Packages.org.mtr.mapping.holder.MinecraftClient.getInstance().getWorldMapped().data;
+			};
 			return _mcClientLevelGetter();
 		}
 	} catch (e) {}
 
+	// 2. Fabric Intermediary (Production Fabric: class_310.method_1551().field_1687)
 	try {
-		let inst = Packages.net.minecraft.client.Minecraft.getInstance();
-		if (inst) {
-			_mcClientLevelGetter = function() { return Packages.net.minecraft.client.Minecraft.getInstance().level; };
+		var fInst = Packages.net.minecraft.class_310.method_1551();
+		if (fInst && fInst.field_1687) {
+			_mcClientLevelGetter = function() {
+				return Packages.net.minecraft.class_310.method_1551().field_1687;
+			};
 			return _mcClientLevelGetter();
 		}
 	} catch (e) {}
 
+	// 3. Forge SRG (Production Forge: Minecraft.m_91087_().f_91073_)
 	try {
-		let inst = Packages.net.minecraft.client.MinecraftClient.getInstance();
-		if (inst) {
-			_mcClientLevelGetter = function() { return Packages.net.minecraft.client.MinecraftClient.getInstance().world; };
+		var srgInst = Packages.net.minecraft.client.Minecraft.m_91087_();
+		if (srgInst) {
+			_mcClientLevelGetter = function() {
+				return Packages.net.minecraft.client.Minecraft.m_91087_().f_91073_;
+			};
 			return _mcClientLevelGetter();
 		}
 	} catch (e) {}
 
-	print("PAW ERROR: could not obtain client level by any method (SRG, Mojmap, Yarn all failed).");
+	// 4. Mojang mappings / NeoForge (Minecraft.getInstance().level)
+	try {
+		var mojInst = Packages.net.minecraft.client.Minecraft.getInstance();
+		if (mojInst && mojInst.level) {
+			_mcClientLevelGetter = function() {
+				return Packages.net.minecraft.client.Minecraft.getInstance().level;
+			};
+			return _mcClientLevelGetter();
+		}
+	} catch (e) {}
+
+	// 5. Yarn mappings (MinecraftClient.getInstance().world)
+	try {
+		var yarnInst = Packages.net.minecraft.client.MinecraftClient.getInstance();
+		if (yarnInst && yarnInst.world) {
+			_mcClientLevelGetter = function() {
+				return Packages.net.minecraft.client.MinecraftClient.getInstance().world;
+			};
+			return _mcClientLevelGetter();
+		}
+	} catch (e) {}
+
+	print("PAW ERROR: could not obtain client level by any method (MTR, Fabric, SRG, Mojmap, Yarn all failed).");
 	_mcClientLevelGetter = function() { return null; };
 	return null;
 }
+
+function createBlockPos(x, y, z) {
+	if (_blockPosFactory !== null) {
+		return _blockPosFactory(x, y, z);
+	}
+
+	// 1. MTR Mapping layer (Works on BOTH Fabric & Forge, returns unwrapped BlockPos via .data)
+	try {
+		new Packages.org.mtr.mapping.holder.BlockPos(0, 0, 0);
+		_blockPosFactory = function(bx, by, bz) {
+			return new Packages.org.mtr.mapping.holder.BlockPos(bx, by, bz).data;
+		};
+		return _blockPosFactory(x, y, z);
+	} catch (e) {}
+
+	// 2. Fabric Intermediary (class_2338)
+	try {
+		new Packages.net.minecraft.class_2338(0, 0, 0);
+		_blockPosFactory = function(bx, by, bz) {
+			return new Packages.net.minecraft.class_2338(bx, by, bz);
+		};
+		return _blockPosFactory(x, y, z);
+	} catch (e) {}
+
+	// 3. Forge / Mojmap / NeoForge (net.minecraft.core.BlockPos)
+	try {
+		new Packages.net.minecraft.core.BlockPos(0, 0, 0);
+		_blockPosFactory = function(bx, by, bz) {
+			return new Packages.net.minecraft.core.BlockPos(bx, by, bz);
+		};
+		return _blockPosFactory(x, y, z);
+	} catch (e) {}
+
+	return null;
+}
+
 function getAllPossibleIntersectionsPAW(train, index, pantoVec1Local, pantoVec2Local, lowerBound, upperBound) {
 	if (!PAW_POSSIBILITY_FLAG) return [];
 
@@ -305,7 +439,8 @@ function getAllPossibleIntersectionsPAW(train, index, pantoVec1Local, pantoVec2L
 		for (let x = minX; x <= maxX; x++) {
 			for (let y = minY; y <= maxY; y++) {
 				for (let z = minZ; z <= maxZ; z++) {
-					let blockPos = new Packages.net.minecraft.core.BlockPos(x, y, z);
+					let blockPos = createBlockPos(x, y, z);
+					if (!blockPos) continue;
 					let wireCollisions = net.getCollisionsInBlock(blockPos);
 					let it = wireCollisions.iterator();
 
@@ -353,6 +488,8 @@ function getAllPossibleIntersectionsPAW(train, index, pantoVec1Local, pantoVec2L
 }
 
 function getLowestPossibleIntersectionCombined(train, index, pantoVec1Local, pantoVec2Local, lowerBound, upperBound) {
+	checkAndWarnPawSupport();
+
 	let msdResults;
 	try {
 		msdResults = getAllPossibleIntersections(train, index, pantoVec1Local, pantoVec2Local, lowerBound, upperBound);
