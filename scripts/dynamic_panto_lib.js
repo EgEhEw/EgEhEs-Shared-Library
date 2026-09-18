@@ -228,11 +228,9 @@ function checkAndWarnPawSupport() {
 	}
 }
 
-// Initial check when script loads
 checkAndWarnPawSupport();
 
 function isMinecraft1201() {
-	// 1. JCM Resources API (Whitelisted & ALWAYS accessible even when script restrictions are active)
 	try {
 		if (typeof Resources !== "undefined") {
 			if (typeof Resources.getAddonVersion === "function") {
@@ -298,7 +296,6 @@ function checkIfPawDoable() {
 	}
 }
 
-// Level and BlockPos helpers supporting both Forge (SRG/Mojmap) and Fabric (Intermediary/Yarn)
 var _mcClientLevelGetter = null;
 var _blockPosFactory = null;
 
@@ -307,7 +304,6 @@ function getMcClientLevel() {
 		return _mcClientLevelGetter();
 	}
 
-	// 1. MTR Mapping layer (Works on BOTH Fabric & Forge, returns unwrapped Minecraft World/Level via .data)
 	try {
 		var mtrClient = Packages.org.mtr.mapping.holder.MinecraftClient.getInstance();
 		if (mtrClient && mtrClient.getWorldMapped()) {
@@ -318,7 +314,6 @@ function getMcClientLevel() {
 		}
 	} catch (e) {}
 
-	// 2. Fabric Intermediary (Production Fabric: class_310.method_1551().field_1687)
 	try {
 		var fInst = Packages.net.minecraft.class_310.method_1551();
 		if (fInst && fInst.field_1687) {
@@ -329,7 +324,6 @@ function getMcClientLevel() {
 		}
 	} catch (e) {}
 
-	// 3. Forge SRG (Production Forge: Minecraft.m_91087_().f_91073_)
 	try {
 		var srgInst = Packages.net.minecraft.client.Minecraft.m_91087_();
 		if (srgInst) {
@@ -340,7 +334,6 @@ function getMcClientLevel() {
 		}
 	} catch (e) {}
 
-	// 4. Mojang mappings / NeoForge (Minecraft.getInstance().level)
 	try {
 		var mojInst = Packages.net.minecraft.client.Minecraft.getInstance();
 		if (mojInst && mojInst.level) {
@@ -351,7 +344,6 @@ function getMcClientLevel() {
 		}
 	} catch (e) {}
 
-	// 5. Yarn mappings (MinecraftClient.getInstance().world)
 	try {
 		var yarnInst = Packages.net.minecraft.client.MinecraftClient.getInstance();
 		if (yarnInst && yarnInst.world) {
