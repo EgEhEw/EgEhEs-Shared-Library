@@ -6,10 +6,8 @@
  * 
  */
 
-include(Resources.idRelative("mtr:panto/scripts/dynamic_panto_lib.js"));
-
 // ============================================================================
-// GENERAL PANTOGRAPH CONFIG
+// 1. GENERAL PANTOGRAPH CONFIG
 // ============================================================================
 var PANTO_MODEL_PATH = ""; // Pantograph OBJ file path Example: var PANTO_MODEL_PATH = "mtr:panto/EXAMPLE_panto.obj"
 var PANTO_MODEL_NAME = "";           // Display label (can be any string) Example: var PANTO_MODEL_NAME = "My cool Panto"
@@ -20,8 +18,12 @@ var NO_WIRE_PARK_HEIGHT = 1.366;      // Fixed height the pantograph rests at wh
 var ENABLE_DEPOT_PARK = true;         // Enables or disables depot parking mode
 var DEPOT_PARK_HEIGHT = 0.4;          // Lowered pantograph height when train is parked in depot (not on route)
 
+// Catenary wire detection bounds (relative to pantograph slide)
+var pantoUpperTreshold = 3.0;  
+var pantoLowerTreshold = -3.0; 
+
 // ============================================================================
-// PANTOGRAPH VEHICLE CONFIG
+// 2. PANTOGRAPH VEHICLE CONFIG
 // 
 // DO NOT FORGET TO ADD "scriptId" TO YOUR VEHICLES IN mtr_custom_resources.json!
 //
@@ -58,14 +60,71 @@ var PANTO_VEHICLE_CONFIG = {
 };
 
 // ============================================================================
+// SCRIPT LOGIC (DO NOT EDIT BELOW THIS LINE UNLESS YOU KNOW WHAT YOU ARE DOING)
+// ============================================================================
+
+// ============================================================================
+// INCLUDE EGEHE-LIB (Dynamic Pantograph Library)
+// ============================================================================
+var _libLoaded = false;
+var _egeheLibWarningShown = false;
+
+// Load from EgEhELib shared library resource pack
+try {
+    if (typeof Resources !== "undefined" && typeof Resources.id === "function") {
+        var egeheLibId = Resources.id("egehelib:scripts/dynamic_panto_lib.js");
+        if (typeof Resources.exist === "function" && Resources.exist(egeheLibId)) {
+            include(egeheLibId);
+            _libLoaded = true;
+        }
+    }
+} catch (e) {
+    print("[Pantograph] Error including EgEhELib: " + e);
+}
+
+function warnMissingEgEhELib() {
+    if (_egeheLibWarningShown) return;
+    try {
+        if (typeof MinecraftClient !== "undefined") {
+            var player = null;
+            try {
+                if (typeof MinecraftClient.localPlayer === "function") {
+                    player = MinecraftClient.localPlayer();
+                }
+            } catch (e) {}
+            if (player == null) {
+                try {
+                    var mc = Packages.org.mtr.mapping.holder.MinecraftClient.getInstance();
+                    if (mc && mc.getPlayerMapped() != null) {
+                        player = mc.getPlayerMapped();
+                    }
+                } catch (e) {}
+            }
+
+            if (player != null) {
+                MinecraftClient.displayMessage(
+                    "§c[EgEhE Pantograph] §e'EgEhELib' kaynak paketi eksik veya aktif değil! Pantografların çalışması için lütfen EgEhELib kaynak paketini aktif edin.",
+                    false
+                );
+                _egeheLibWarningShown = true;
+                print("[Pantograph] Missing EgEhELib warning displayed in chat.");
+            }
+        }
+    } catch (e) {
+        print("[Pantograph] Error displaying EgEhELib warning: " + e);
+    }
+}
+
+if (!_libLoaded) {
+    print("[Pantograph] CRITICAL: dynamic_panto_lib.js could not be loaded from EgEhELib! Please make sure 'EgEhELib' resource pack is active.");
+    warnMissingEgEhELib();
+}
+
+// ============================================================================
 // MODEL LOADING
 // ============================================================================
 var rawPanto = ModelManager.loadModelParts(Resources.idRelative(PANTO_MODEL_PATH), true);
-var pantoModels = uploadPartedModels(rawPanto, true, false, false, PANTO_MODEL_NAME);
-
-// Catenary wire detection bounds
-var pantoUpperTreshold = 3.0;  
-var pantoLowerTreshold = -3.0; 
+var pantoModels = uploadPartedModels(rawPanto, true, false, false, PANTO_MODEL_NAME); 
 
 function getPantoConfigForVehicle(vehicleId) {
     if (!vehicleId) return null;
@@ -102,12 +161,26 @@ function isTrainInDepot(train) {
 }
 
 function create(ctx, state, train) {
+    if (!_libLoaded) {
+        warnMissingEgEhELib();
+        return;
+    }
+    if (typeof checkAndWarnPawSupport === "function") {
+        checkAndWarnPawSupport();
+    }
     if (!state.dynPantoCached) state.dynPantoCached = {};
     if (!state.pantoRateLimit) state.pantoRateLimit = new RateLimit(0.1);
     if (!state.smoothPantoHeight) state.smoothPantoHeight = {};
 }
 
 function render(ctx, state, train) {
+    if (!_libLoaded) {
+        warnMissingEgEhELib();
+        return;
+    }
+    if (typeof checkAndWarnPawSupport === "function") {
+        checkAndWarnPawSupport();
+    }
     if (!pantoModels) return;
     if (!state.dynPantoCached) state.dynPantoCached = {};
     if (!state.pantoRateLimit) state.pantoRateLimit = new RateLimit(0.1);
@@ -252,6 +325,7 @@ function updateCachedCatenaryPerCar(train, state, i, config) {
 // EMBEDDED UTILS (Formerly from harrys_lib.js)
 // ============================================================================
 function uploadPartedModels(rawModels, removeRenderType, invertV, invertU, packName) {
+    if (!rawModels) return {};
     invertU = invertU ?? false;
     invertV = invertV ?? false;
 
