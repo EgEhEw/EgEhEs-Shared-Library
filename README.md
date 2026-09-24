@@ -14,9 +14,7 @@ The original dynamic pantograph library was developed by [HarryTheCat](https://g
 
 ## Files
 
-Just two, both go in `assets/mtr/panto/scripts/`:
-
-- **`dynamic_panto_lib.js`** — This is the main library script that enables the pantograph to function. I wouldn't recommend changing anything here unless you really know what you're doing.
+- **`dynamic_panto_lib.js`** — I wouldn't recommend touching this. If you don't know what you're doing, this is just the main library required for the script to run. You can download it from Modrinth and place it in the Minecraft resource pack.
 - **`EXAMPLE_pantograph.js`** — the per-train config and render entrypoint. This is the one you edit.
 
 ## Setup
