@@ -124,41 +124,7 @@ if (!_libLoaded) {
 // MODEL LOADING
 // ============================================================================
 var rawPanto = ModelManager.loadModelParts(Resources.idRelative(PANTO_MODEL_PATH), true);
-var pantoModels = uploadPartedModels(rawPanto, true, false, false, PANTO_MODEL_NAME); 
-
-function getPantoConfigForVehicle(vehicleId) {
-    if (!vehicleId) return null;
-
-    var cleanId = String(vehicleId).toLowerCase();
-
-    if (cleanId.indexOf("1np") !== -1) {
-        return null;
-    }
-
-    for (var key in PANTO_VEHICLE_CONFIG) {
-        if (cleanId.indexOf(key.toLowerCase()) !== -1) {
-            return PANTO_VEHICLE_CONFIG[key];
-        }
-    }
-
-    return null;
-}
-
-function isTrainInDepot(train) {
-    if (typeof train.getIsOnRoute === "function") {
-        return !train.getIsOnRoute();
-    }
-    if (typeof train.isOnRoute === "function") {
-        return !train.isOnRoute();
-    }
-    try {
-        var mtrVehicle = train.getMtrVehicle();
-        if (mtrVehicle && typeof mtrVehicle.getIsOnRoute === "function") {
-            return !mtrVehicle.getIsOnRoute();
-        }
-    } catch (e) {}
-    return false;
-}
+var pantoModels = typeof uploadPartedModels === "function" ? uploadPartedModels(rawPanto, true, false, false, PANTO_MODEL_NAME) : null;
 
 function create(ctx, state, train) {
     if (!_libLoaded) {
@@ -284,83 +250,4 @@ function renderPanto(ctx, state, train, i, config) {
     matrices.popPose();
 
     matrices.popPose();
-}
-
-function updateCachedCatenaryPerCar(train, state, i, config) {
-    var p1 = new Vector3f(-1.0, 4.12, config.wireDetectZ);
-    var p2 = new Vector3f(1.0, 4.12, config.wireDetectZ);
-
-    if (state.dynPantoCached && state.dynPantoCached[i]) {
-        var trainCarRotations = train.lastCarRotation[i];
-        var projectPlaneNormal = new Vector3f(0, 1, 0)
-            .rotZ(trainCarRotations.z())
-            .rotX(trainCarRotations.x())
-            .rotY(trainCarRotations.y());
-
-        var pantoVec1Glob = getGlobalPosFromLocalCoords(train, p1, i);
-        var pantoVec2Glob = getGlobalPosFromLocalCoords(train, p2, i);
-
-        var vecA = state.dynPantoCached[i].vecA;
-        var vecB = state.dynPantoCached[i].vecB;
-        var projectedIntersection = tryGetProjectedIntersection(vecA, vecB, 
-            pantoVec1Glob, pantoVec2Glob, projectPlaneNormal);
-
-        if (!projectedIntersection) {
-            state.dynPantoCached[i] = getLowestPossibleIntersectionCombined(train, i, p1, p2, pantoLowerTreshold, pantoUpperTreshold);
-        } else if ((projectedIntersection[0] < 0 || projectedIntersection[0] > 1) ||
-                 (projectedIntersection[1] < 0 || projectedIntersection[1] > 1) || 
-                 (projectedIntersection[2] < pantoLowerTreshold || projectedIntersection[2] > pantoUpperTreshold)) {
-            state.dynPantoCached[i] = getLowestPossibleIntersectionCombined(train, i, p1, p2, pantoLowerTreshold, pantoUpperTreshold);
-        } else {
-            state.dynPantoCached[i].wireCoef = projectedIntersection[0];
-            state.dynPantoCached[i].pantoCoef = projectedIntersection[1];
-            state.dynPantoCached[i].signedDistance = projectedIntersection[2];
-        }
-    } else if (state.pantoRateLimit && state.pantoRateLimit.shouldUpdate()) {
-        state.dynPantoCached[i] = getLowestPossibleIntersectionCombined(train, i, p1, p2, pantoLowerTreshold, pantoUpperTreshold);
-    }
-}
-
-// ============================================================================
-// EMBEDDED UTILS (Formerly from harrys_lib.js)
-// ============================================================================
-function uploadPartedModels(rawModels, removeRenderType, invertV, invertU, packName) {
-    if (!rawModels) return {};
-    invertU = invertU ?? false;
-    invertV = invertV ?? false;
-
-    var result = {};
-    for (var it = rawModels.entrySet().iterator(); it.hasNext(); ) {
-        var entry = it.next();
-
-        var jsStringKey = "" + entry.getKey(); 
-        if (jsStringKey.includes("__int__")) {
-            entry.getValue().setAllRenderType("interior");
-            if (removeRenderType) jsStringKey = jsStringKey.replace("__int__", '');
-
-        } else if (jsStringKey.includes("__light__")) {
-            entry.getValue().setAllRenderType("light");
-            if (removeRenderType) jsStringKey = jsStringKey.replace("__light__", '');
-
-        } else if (jsStringKey.includes("__window__")) {
-            entry.getValue().setAllRenderType("exteriortranslucent");
-            if (removeRenderType) jsStringKey = jsStringKey.replace("__window__", '');
-
-        } else if (jsStringKey.includes("__windowint__")) {
-            entry.getValue().setAllRenderType("interiortranslucent");
-            if (removeRenderType) jsStringKey = jsStringKey.replace("__windowint__", '');
-
-        } 
-
-        print((packName == undefined ? "" : packName + ": " )+ "registering part " + jsStringKey + "...");
-        entry.getValue().applyUVMirror(invertU, invertV);
-        result[jsStringKey] = ModelManager.upload(entry.getValue());
-    }
-    return result;
-}
-
-function getGlobalPosFromLocalCoords(train, posLoc, i) {
-    var tr = train.lastCarRotation[i];
-    var tp = train.lastCarPosition[i];
-    return posLoc.copy().add(new Vector3f(0, 1, 0)).rotZ(tr.z()).rotX(-tr.x()).rotY(tr.y()).add(tp);
 }
