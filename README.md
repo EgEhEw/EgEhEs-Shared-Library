@@ -66,9 +66,9 @@ Any vehicle whose ID contains one of these keys (not case-sensitive) gets a pant
 
 - **WARNING: For now, they only work on files converted from the Blockbench model to OBJ format. They will not work on OBJ files that are not .bbmodel files!**
 - You need [Node.js](https://nodejs.org/en/download) for the scripts to run!
-- These are the two scripts I mentioned earlier p1, p2 and p3 that solve the pivot issue.
+- These are the two scripts I mentioned earlier p1, p2, p3 (if you want to add guide rod) and p4 that solve the pivot issue.
 
-**`objgroupfix.js`** - For some reason, when Blockbench exports in .obj format, it doesn’t split the models into obj groups based on the p1, p2, p3, and pbase folders you’ve placed in the your blockbench model. This script, however, examines the Blockbench model, locates the models in the p1, p2, p3, and pbase folders, and regroup them accordingly. Without this script, the pantograph arm won’t work. And running `pivotfix.js` without performing this step is strongly not recommended.
+**`objgroupfix.js`** - For some reason, when Blockbench exports in .obj format, it doesn’t split the models into obj groups based on the p1, p2, p3, and pbase folders you’ve placed in the your blockbench model. This script, however, examines the Blockbench model, locates the models in the p1, p2, p3, p4 and pbase folders, and regroup them accordingly. Without this script, the pantograph arm won’t work. And running `pivotfix.js` without performing this step is strongly not recommended.
 
 ```bash
 node objgroupfix.js model.bbmodel model.obj [output.obj]
