@@ -620,6 +620,19 @@ function getPantoConfigForVehicle(vehicleId, configMap) {
 }
 
 /**
+ * Ensures state has required caches and rate limiters initialized.
+ */
+function initPantoState(state) {
+	if (!state) return;
+	if (typeof checkAndWarnPawSupport === "function") {
+		checkAndWarnPawSupport();
+	}
+	if (!state.dynPantoCached) state.dynPantoCached = {};
+	if (!state.pantoRateLimit) state.pantoRateLimit = new RateLimit(0.1);
+	if (!state.smoothPantoHeight) state.smoothPantoHeight = {};
+}
+
+/**
  * Searches and caches catenary wire intersection for a single car.
  */
 function updateCachedCatenaryPerCar(train, state, i, config, lowerBound, upperBound) {
@@ -1022,6 +1035,71 @@ function createPantoRigFromText(objText, overrides) {
 			}
 
 			matrices.popPose();
+		},
+		renderAll: function(ctx, state, train, configMap, pantoModels) {
+			initPantoState(state);
+			var models = pantoModels || this.models;
+			if (!models) return;
+
+			var cars = ctx.getMyCars();
+			for (var carIndex in cars) {
+				var i = cars[carIndex];
+				var config = getPantoConfigForVehicle(train.getVehicleId(i), configMap);
+				if (!config) continue;
+
+				updateCachedCatenaryPerCar(train, state, i, config);
+				this.render(ctx, state, train, i, config, models);
+			}
 		}
 	};
 }
+
+/**
+ * High-level loader that loads model parts, uploads them, and parses the OBJ rig.
+ * Returns an object that can render individual cars or all cars at once.
+ */
+function loadPantograph(modelPath, modelName) {
+	var displayName = modelName || "Pantograph";
+	var models = null;
+	try {
+		if (typeof ModelManager !== "undefined" && typeof Resources !== "undefined") {
+			var id = (typeof modelPath === "string" && modelPath.indexOf(":") !== -1)
+				? Resources.id(modelPath)
+				: Resources.idRelative(modelPath);
+			var rawPanto = ModelManager.loadModelParts(id, true);
+			if (typeof uploadPartedModels === "function") {
+				models = uploadPartedModels(rawPanto, true, false, false, displayName);
+			}
+		}
+	} catch (e) {
+		print("[loadPantograph] Error loading 3D model parts: " + e);
+	}
+
+	var rig = (typeof loadPantoRigFromObj === "function") ? loadPantoRigFromObj(modelPath) : null;
+
+	return {
+		models: models,
+		rig: rig,
+		renderCar: function(ctx, state, train, carIndex, vehicleConfig) {
+			if (!models || !rig || !vehicleConfig) return;
+			initPantoState(state);
+			updateCachedCatenaryPerCar(train, state, carIndex, vehicleConfig);
+			rig.render(ctx, state, train, carIndex, vehicleConfig, models);
+		},
+		renderAll: function(ctx, state, train, configMap) {
+			if (!models || !rig) return;
+			initPantoState(state);
+			var cars = ctx.getMyCars();
+			for (var carIndex in cars) {
+				var i = cars[carIndex];
+				var config = getPantoConfigForVehicle(train.getVehicleId(i), configMap);
+				if (!config) continue;
+				updateCachedCatenaryPerCar(train, state, i, config);
+				rig.render(ctx, state, train, i, config, models);
+			}
+		}
+	};
+}
+
+var loadPanto = loadPantograph;
+
