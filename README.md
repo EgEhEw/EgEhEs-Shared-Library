@@ -1,6 +1,6 @@
 # Dynamic Pantograph (MTR / JCM)
 
-It all started because I wanted to make the pantograph in my Blockbench model dynamic. Later, I wanted to ensure compatibility not only with the MSD mode but also with the pantograph and wire modes, and it works really well. Anyway, I then placed the pantograph I created in Blockbench into the folders as p1, p2, p3, and pbase, but the Blockbench export doesn’t save the OBJ files into those groups. So I created a simple `objgroupfix.js` script, which easily solved the grouping issue. But I had another problem: this time, the angle on the pantograph’s arm was wrong. Since the math behind this was a bit too much for me, I had to ask Claude to create `pivotfix.js` for me. Because those mathematical calculations were giving me.
+It all started because I wanted to make the pantograph in my Blockbench model dynamic. Later, I wanted to ensure compatibility not only with the MSD mode but also with the pantograph and wire modes, and it works really well. Anyway, I then placed the pantograph I created in Blockbench into the folders as p1, p2, p3, and pbase, but the Blockbench export doesn’t save the OBJ files into those groups. So I created a simple `objgroupfix.js` script, which easily solved the grouping issue. ~~But I had another problem: this time, the angle on the pantograph’s arm was wrong. Since the math behind this was a bit too much for me, I had to ask Claude to create `pivotfix.js` for me. Because those mathematical calculations were giving me.~~
 
 I'm sharing this so that the trains made with Blockbench also have dynamic pantographs
 
@@ -68,18 +68,11 @@ Any vehicle whose ID contains one of these keys (not case-sensitive) gets a pant
 - You need [Node.js](https://nodejs.org/en/download) for the scripts to run!
 - These are the two scripts I mentioned earlier p1, p2, p3 (if you want to add guide rod) and p4 that solve the pivot issue.
 
-**`objgroupfix.js`** - For some reason, when Blockbench exports in .obj format, it doesn’t split the models into obj groups based on the p1, p2, p3, and pbase folders you’ve placed in the your blockbench model. This script, however, examines the Blockbench model, locates the models in the p1, p2, p3, p4 and pbase folders, and regroup them accordingly. Without this script, the pantograph arm won’t work. And running `pivotfix.js` without performing this step is strongly not recommended.
+**`objgroupfix.js`** - For some reason, when Blockbench exports in .obj format, it doesn’t split the models into obj groups based on the p1, p2, p3, and pbase folders you’ve placed in the your blockbench model. This script, however, examines the Blockbench model, locates the models in the p1, p2, p3, p4 and pbase folders, and regroup them accordingly. Without this script, the pantograph arm won’t work.
 
 ```bash
 node objgroupfix.js model.bbmodel model.obj [output.obj]
 ```
-
-**`pivotfix.js`** - pulls each part's pivot straight from the `.bbmodel` group origins, patches the `matrices.translate(...)` pairs in your pantograph script to match, and regenerates the inverse kinematics block (arm lengths, base angles) from the same data. Re-run it any time you reshape the model and the script stays accurate no manual math.
-
-```bash
-node pivotfix.js model.bbmodel EXAMPLE_pantograph.js [output.js]
-```
-
 Both back up the original file before writing (`.bak`), and only touch the specific blocks they generate safe to run repeatedly.
 
 ## License
