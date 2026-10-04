@@ -2,7 +2,6 @@
  * MIT License
  * 
  * Copyright (c) 2026 EgEhE
- * Includes embedded utilities & dynamic panto library by HarryTheCat
  * 
  */
 
