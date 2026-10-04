@@ -62,9 +62,6 @@ var PANTO_VEHICLE_CONFIG = {
 // SCRIPT LOGIC (DO NOT EDIT BELOW THIS LINE UNLESS YOU KNOW WHAT YOU ARE DOING)
 // ============================================================================
 
-// ============================================================================
-// INCLUDE EGEHE-LIB (Dynamic Pantograph Library)
-// ============================================================================
 var _libLoaded = false;
 var _egeheLibWarningShown = false;
 
@@ -122,21 +119,13 @@ if (!_libLoaded) {
 // ============================================================================
 // MODEL LOADING
 // ============================================================================
-var rawPanto = ModelManager.loadModelParts(Resources.idRelative(PANTO_MODEL_PATH), true);
-var pantoModels = typeof uploadPartedModels === "function" ? uploadPartedModels(rawPanto, true, false, false, PANTO_MODEL_NAME) : null;
-var pantoRig = typeof loadPantoRigFromObj === "function" ? loadPantoRigFromObj(PANTO_MODEL_PATH) : null;
+var panto = typeof loadPantograph === "function" ? loadPantograph(PANTO_MODEL_PATH, PANTO_MODEL_NAME) : null;
 
 function create(ctx, state, train) {
     if (!_libLoaded) {
         warnMissingEgEhELib();
         return;
     }
-    if (typeof checkAndWarnPawSupport === "function") {
-        checkAndWarnPawSupport();
-    }
-    if (!state.dynPantoCached) state.dynPantoCached = {};
-    if (!state.pantoRateLimit) state.pantoRateLimit = new RateLimit(0.1);
-    if (!state.smoothPantoHeight) state.smoothPantoHeight = {};
 }
 
 function render(ctx, state, train) {
@@ -144,26 +133,8 @@ function render(ctx, state, train) {
         warnMissingEgEhELib();
         return;
     }
-    if (typeof checkAndWarnPawSupport === "function") {
-        checkAndWarnPawSupport();
-    }
-    if (!pantoModels) return;
-    if (!state.dynPantoCached) state.dynPantoCached = {};
-    if (!state.pantoRateLimit) state.pantoRateLimit = new RateLimit(0.1);
-    if (!state.smoothPantoHeight) state.smoothPantoHeight = {};
-
-    var cars = ctx.getMyCars();
-    for (var carIndex in cars) {
-        var i = cars[carIndex];
-        var config = getPantoConfigForVehicle(train.getVehicleId(i));
-        
-        if (!config) continue;
-
-        updateCachedCatenaryPerCar(train, state, i, config);
-        if (pantoRig) {
-            pantoRig.render(ctx, state, train, i, config, pantoModels);
-        }
+    if (panto) {
+        panto.renderAll(ctx, state, train, PANTO_VEHICLE_CONFIG);
     }
 }
-    matrices.popPose();
 }
