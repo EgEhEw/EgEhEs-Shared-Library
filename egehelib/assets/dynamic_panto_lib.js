@@ -579,18 +579,22 @@ function uploadPartedModels(rawModels, removeRenderType, invertV, invertU, packN
  */
 function isTrainInDepot(train) {
 	if (!train) return false;
-	if (typeof train.getIsOnRoute === "function") {
-		return !train.getIsOnRoute();
-	}
-	if (typeof train.isOnRoute === "function") {
-		return !train.isOnRoute();
-	}
+	try {
+		if (train.getIsOnRoute) {
+			return !train.getIsOnRoute();
+		}
+	} catch (e1) {}
+	try {
+		if (train.isOnRoute) {
+			return !train.isOnRoute();
+		}
+	} catch (e2) {}
 	try {
 		var mtrVehicle = train.getMtrVehicle();
-		if (mtrVehicle && typeof mtrVehicle.getIsOnRoute === "function") {
+		if (mtrVehicle && mtrVehicle.getIsOnRoute) {
 			return !mtrVehicle.getIsOnRoute();
 		}
-	} catch (e) {}
+	} catch (e3) {}
 	return false;
 }
 
@@ -656,3 +660,368 @@ function updateCachedCatenaryPerCar(train, state, i, config, lowerBound, upperBo
 	}
 }
 
+
+// ============================================================================
+// DYNAMIC OBJ PANTOGRAPH RIG & KINEMATICS ENGINE
+// ============================================================================
+
+/**
+ * Loads and constructs a self-solving pantograph rig from an OBJ model file.
+ * Auto-detects pivot joints from "# pivot <part>" headers or pure 3D vertex clustering.
+ * Automatically computes 2-link IK and optional 4-bar coupling linkage (p4).
+ * 
+ * @param {string|Identifier} modelPath - Model path identifier (e.g. "mtr:panto/abb_panto.obj")
+ * @param {Object} [overrides] - Optional overrides { base: [y, z], elbow: [y, z], tip: [y, z], p4_base: [y, z], p4_elbow: [y, z] }
+ * @returns {Object|null} PantoRig instance
+ */
+function loadPantoRigFromObj(modelPath, overrides) {
+	if (!modelPath) return null;
+
+	var objText = null;
+	try {
+		if (typeof Resources !== "undefined" && typeof Resources.readString === "function") {
+			var id = null;
+			if (typeof modelPath === "string") {
+				if (modelPath.indexOf(":") !== -1) {
+					id = Resources.id(modelPath);
+				} else if (typeof Resources.idRelative === "function") {
+					id = Resources.idRelative(modelPath);
+				} else {
+					id = Resources.id(modelPath);
+				}
+			} else {
+				id = modelPath;
+			}
+
+			if (id && typeof Resources.exist === "function" && Resources.exist(id)) {
+				objText = Resources.readString(id);
+			}
+		}
+	} catch (e) {
+		print("[PantoRig] Failed to read OBJ model via Resources: " + e);
+	}
+
+	if (!objText) {
+		print("[PantoRig] Warning: OBJ text could not be loaded for: " + modelPath);
+		return null;
+	}
+
+	return createPantoRigFromText(String(objText), overrides);
+}
+
+function createPantoRigFromText(objText, overrides) {
+	overrides = overrides || {};
+	var raw = "" + objText;
+	raw = raw.replace(/\r/g, "");
+	var lines = raw.split("\n");
+	var explicitPivots = {};
+	var groupVerts = {};
+	var curGroup = null;
+
+	for (var i = 0; i < lines.length; i++) {
+		var line = ("" + lines[i]).trim();
+		if (line.length === 0) continue;
+		if (line.charAt(0) === "#") {
+			var m = line.match(/^#\s*pivot\s+(\w+)\s+(-?[\d.]+)\s+(-?[\d.]+)\s+(-?[\d.]+)/i);
+			if (m) {
+				explicitPivots[("" + m[1]).toLowerCase()] = {
+					x: parseFloat(m[2]),
+					y: parseFloat(m[3]),
+					z: parseFloat(m[4])
+				};
+			}
+			continue;
+		}
+		if (line.indexOf("g ") === 0) {
+			curGroup = ("" + line.substring(2)).trim();
+			if (!groupVerts[curGroup]) groupVerts[curGroup] = [];
+			continue;
+		}
+		if (curGroup && line.indexOf("v ") === 0) {
+			var parts = ("" + line.substring(2)).trim().split(/\s+/);
+			if (parts.length >= 3) {
+				groupVerts[curGroup].push([parseFloat(parts[0]), parseFloat(parts[1]), parseFloat(parts[2])]);
+			}
+		}
+	}
+
+	function getCenter(verts) {
+		var y = 0, z = 0;
+		for (var k = 0; k < verts.length; k++) {
+			y += verts[k][1];
+			z += verts[k][2];
+		}
+		return { y: y / verts.length, z: z / verts.length };
+	}
+
+	function findClosestCluster(vListA, vListB, maxDist) {
+		if (!vListA || !vListB || vListA.length === 0 || vListB.length === 0) return { y: 0, z: 0 };
+		maxDist = maxDist || 0.15;
+		var pairs = [];
+		for (var a = 0; a < vListA.length; a++) {
+			var va = vListA[a];
+			for (var b = 0; b < vListB.length; b++) {
+				var vb = vListB[b];
+				var dy = va[1] - vb[1], dz = va[2] - vb[2], dx = va[0] - vb[0];
+				var d = Math.sqrt(dx * dx + dy * dy + dz * dz);
+				if (d <= maxDist) {
+					pairs.push({ va: va, vb: vb, d: d });
+				}
+			}
+		}
+		pairs.sort(function(p1, p2) { return p1.d - p2.d; });
+		if (pairs.length === 0) {
+			var bestDist = Infinity, bestA = vListA[0], bestB = vListB[0];
+			for (var a2 = 0; a2 < vListA.length; a2++) {
+				for (var b2 = 0; b2 < vListB.length; b2++) {
+					var v1 = vListA[a2], v2 = vListB[b2];
+					var d2 = Math.sqrt((v1[0]-v2[0])*(v1[0]-v2[0]) + (v1[1]-v2[1])*(v1[1]-v2[1]) + (v1[2]-v2[2])*(v1[2]-v2[2]));
+					if (d2 < bestDist) { bestDist = d2; bestA = v1; bestB = v2; }
+				}
+			}
+			return { y: (bestA[1] + bestB[1]) / 2, z: (bestA[2] + bestB[2]) / 2 };
+		}
+		var topCount = Math.min(12, pairs.length);
+		var sy = 0, sz = 0;
+		for (var t = 0; t < topCount; t++) {
+			sy += (pairs[t].va[1] + pairs[t].vb[1]) / 2;
+			sz += (pairs[t].va[2] + pairs[t].vb[2]) / 2;
+		}
+		return { y: sy / topCount, z: sz / topCount };
+	}
+
+	var base = overrides.base ? { y: overrides.base[0], z: overrides.base[1] }
+		: (explicitPivots.p1 ? { y: explicitPivots.p1.y, z: explicitPivots.p1.z } : null);
+
+	var elbow = overrides.elbow ? { y: overrides.elbow[0], z: overrides.elbow[1] }
+		: (explicitPivots.p2 ? { y: explicitPivots.p2.y, z: explicitPivots.p2.z } : null);
+
+	var tip = overrides.tip ? { y: overrides.tip[0], z: overrides.tip[1] }
+		: (explicitPivots.p3 ? { y: explicitPivots.p3.y, z: explicitPivots.p3.z } : null);
+
+	var p4_base = overrides.p4_base ? { y: overrides.p4_base[0], z: overrides.p4_base[1] }
+		: (explicitPivots.p4 ? { y: explicitPivots.p4.y, z: explicitPivots.p4.z } : null);
+
+	var p4_elbow = overrides.p4_elbow ? { y: overrides.p4_elbow[0], z: overrides.p4_elbow[1] }
+		: (explicitPivots.p4_elbow ? { y: explicitPivots.p4_elbow.y, z: explicitPivots.p4_elbow.z } : null);
+
+	if (!elbow && groupVerts.p1 && groupVerts.p2) {
+		elbow = findClosestCluster(groupVerts.p1, groupVerts.p2, 0.15);
+	}
+	if (!tip && groupVerts.p2 && groupVerts.p3) {
+		tip = findClosestCluster(groupVerts.p2, groupVerts.p3, 0.15);
+	}
+	if (!base && groupVerts.p1) {
+		var p1Copy = groupVerts.p1.slice().sort(function(a, b) { return a[1] - b[1]; });
+		var lowP1 = p1Copy.slice(0, Math.min(8, p1Copy.length));
+		if (groupVerts.p_base) {
+			base = findClosestCluster(lowP1, groupVerts.p_base, 0.25);
+		} else {
+			base = getCenter(lowP1);
+		}
+	}
+
+	if ((!p4_base || !p4_elbow) && groupVerts.p4 && groupVerts.p4.length > 0 && elbow) {
+		var p4Verts = groupVerts.p4;
+		var maxD = 0, pA = p4Verts[0], pB = p4Verts[0];
+		for (var i1 = 0; i1 < p4Verts.length; i1++) {
+			for (var i2 = 0; i2 < p4Verts.length; i2++) {
+				var d12 = Math.sqrt(
+					(p4Verts[i1][0] - p4Verts[i2][0]) * (p4Verts[i1][0] - p4Verts[i2][0]) +
+					(p4Verts[i1][1] - p4Verts[i2][1]) * (p4Verts[i1][1] - p4Verts[i2][1]) +
+					(p4Verts[i1][2] - p4Verts[i2][2]) * (p4Verts[i1][2] - p4Verts[i2][2])
+				);
+				if (d12 > maxD) { maxD = d12; pA = p4Verts[i1]; pB = p4Verts[i2]; }
+			}
+		}
+		var clA = [], clB = [];
+		for (var k1 = 0; k1 < p4Verts.length; k1++) {
+			var vK = p4Verts[k1];
+			if (Math.sqrt((vK[1]-pA[1])*(vK[1]-pA[1]) + (vK[2]-pA[2])*(vK[2]-pA[2])) < 0.2) clA.push(vK);
+			if (Math.sqrt((vK[1]-pB[1])*(vK[1]-pB[1]) + (vK[2]-pB[2])*(vK[2]-pB[2])) < 0.2) clB.push(vK);
+		}
+		var ptA = getCenter(clA), ptB = getCenter(clB);
+		var distA = Math.sqrt((ptA.y - elbow.y)*(ptA.y - elbow.y) + (ptA.z - elbow.z)*(ptA.z - elbow.z));
+		var distB = Math.sqrt((ptB.y - elbow.y)*(ptB.y - elbow.y) + (ptB.z - elbow.z)*(ptB.z - elbow.z));
+		if (!p4_elbow) p4_elbow = distA < distB ? ptA : ptB;
+		if (!p4_base) p4_base = distA < distB ? ptB : ptA;
+	}
+
+	if (!base || !elbow || !tip) {
+		print("[PantoRig] ERROR: Unable to resolve essential pivots. base=" + (base ? ("y=" + base.y.toFixed(4) + " z=" + base.z.toFixed(4)) : "MISSING") + " elbow=" + (elbow ? ("y=" + elbow.y.toFixed(4) + " z=" + elbow.z.toFixed(4)) : "MISSING") + " tip=" + (tip ? ("y=" + tip.y.toFixed(4) + " z=" + tip.z.toFixed(4)) : "MISSING"));
+		return null;
+	}
+
+	var l1 = Math.sqrt((elbow.z - base.z) * (elbow.z - base.z) + (elbow.y - base.y) * (elbow.y - base.y));
+	var l2 = Math.sqrt((tip.z - elbow.z) * (tip.z - elbow.z) + (tip.y - elbow.y) * (tip.y - elbow.y));
+	var baseAngle1 = Math.atan2(elbow.y - base.y, elbow.z - base.z);
+	var restAngle2Abs = Math.atan2(tip.y - elbow.y, tip.z - elbow.z);
+	var restTheta2 = restAngle2Abs - baseAngle1;
+	var hasP4 = !!p4_base && !!p4_elbow;
+	var p4RestAngle = hasP4 ? Math.atan2(p4_elbow.y - p4_base.y, p4_elbow.z - p4_base.z) : 0;
+
+	print("[PantoRig] Rig configured successfully from OBJ:");
+	print("  Base Pivot:  y=" + base.y.toFixed(5) + " z=" + base.z.toFixed(5));
+	print("  Elbow Pivot: y=" + elbow.y.toFixed(5) + " z=" + elbow.z.toFixed(5));
+	print("  Tip Pivot:   y=" + tip.y.toFixed(5) + " z=" + tip.z.toFixed(5));
+	if (hasP4) {
+		print("  p4 Coupling: base=[y=" + p4_base.y.toFixed(5) + ", z=" + p4_base.z.toFixed(5) + "] elbow=[y=" + p4_elbow.y.toFixed(5) + ", z=" + p4_elbow.z.toFixed(5) + "]");
+	}
+
+	return {
+		pivots: {
+			base: base,
+			elbow: elbow,
+			tip: tip,
+			p4_base: p4_base,
+			p4_elbow: p4_elbow
+		},
+		kinematics: {
+			l1: l1,
+			l2: l2,
+			baseAngle1: baseAngle1,
+			restTheta2: restTheta2,
+			hasP4: hasP4,
+			p4RestAngle: p4RestAngle
+		},
+		calculate: function(currentHeight) {
+			var pantoAngle1 = 0, pantoAngle2 = 0, pantoAngle4 = 0;
+			var ik = tryFind2dInverseKinematicsPanto(base.z, base.y, tip.z, currentHeight, l1, l2);
+			if (ik) {
+				var v = (Math.sign(ik[0].theta2) === Math.sign(restTheta2)) ? ik[0] : ik[1];
+				pantoAngle1 = -(v.theta1 - baseAngle1);
+				pantoAngle2 = -(v.theta2 - restTheta2);
+
+				if (hasP4) {
+					var dy_CB = p4_elbow.y - elbow.y;
+					var dz_CB = p4_elbow.z - elbow.z;
+					var cy2 = elbow.y + dy_CB * Math.cos(pantoAngle2) - dz_CB * Math.sin(pantoAngle2);
+					var cz2 = elbow.z + dy_CB * Math.sin(pantoAngle2) + dz_CB * Math.cos(pantoAngle2);
+
+					var dy_BA = cy2 - base.y;
+					var dz_BA = cz2 - base.z;
+					var cy_world = base.y + dy_BA * Math.cos(pantoAngle1) - dz_BA * Math.sin(pantoAngle1);
+					var cz_world = base.z + dy_BA * Math.sin(pantoAngle1) + dz_BA * Math.cos(pantoAngle1);
+
+					var currentAngle4 = Math.atan2(cy_world - p4_base.y, cz_world - p4_base.z);
+					pantoAngle4 = -(currentAngle4 - p4RestAngle);
+				}
+			}
+			return {
+				angle1: pantoAngle1,
+				angle2: pantoAngle2,
+				angle4: pantoAngle4,
+				reachable: !!ik
+			};
+		},
+		render: function(ctx, a2, a3, a4, a5, a6, a7) {
+			var state, train, carIndex, vehicleConfig, pantoModels, currentHeight, matrices;
+
+			if (typeof a2 === "object" && a2 !== null && (typeof a4 === "number" || typeof a4 === "string")) {
+				// Unified signature: render(ctx, state, train, i, config, pantoModels, [optionalHeight])
+				state = a2;
+				train = a3;
+				carIndex = a4;
+				vehicleConfig = a5;
+				pantoModels = a6;
+
+				if (!pantoModels || !vehicleConfig) return;
+
+				if (a7 !== undefined && a7 !== null) {
+					currentHeight = a7;
+				} else {
+					var wireRef = typeof WIRE_TRACKING_REFERENCE !== "undefined" ? WIRE_TRACKING_REFERENCE : 1.4851;
+					var noWireHeight = typeof NO_WIRE_PARK_HEIGHT !== "undefined" ? NO_WIRE_PARK_HEIGHT : 1.366;
+					var depotPark = typeof ENABLE_DEPOT_PARK !== "undefined" ? ENABLE_DEPOT_PARK : true;
+					var depotHeight = typeof DEPOT_PARK_HEIGHT !== "undefined" ? DEPOT_PARK_HEIGHT : 0.4;
+
+					var targetHeight = noWireHeight;
+					if (depotPark && typeof isTrainInDepot === "function" && isTrainInDepot(train)) {
+						targetHeight = depotHeight;
+					} else if (state.dynPantoCached && state.dynPantoCached[carIndex]) {
+						targetHeight = wireRef + state.dynPantoCached[carIndex].signedDistance;
+					}
+
+					if (!state.smoothPantoHeight) state.smoothPantoHeight = {};
+					var dt = (typeof Timing !== "undefined" && typeof Timing.delta === "function") ? Timing.delta() : 0.05;
+					if (state.smoothPantoHeight[carIndex] === undefined) {
+						state.smoothPantoHeight[carIndex] = targetHeight;
+					} else {
+						var lerpSpeed = dt > 0 ? Math.min(1.0, dt * 18.0) : 1.0;
+						state.smoothPantoHeight[carIndex] += (targetHeight - state.smoothPantoHeight[carIndex]) * lerpSpeed;
+					}
+					currentHeight = state.smoothPantoHeight[carIndex];
+				}
+				matrices = new Matrices();
+			} else {
+				// Explicit signature: render(ctx, carIndex, matrices, vehicleConfig, pantoModels, currentHeight)
+				carIndex = a2;
+				matrices = a3;
+				vehicleConfig = a4;
+				pantoModels = a5;
+				currentHeight = a6;
+				if (!pantoModels || !matrices || !vehicleConfig) return;
+			}
+
+			var angles = this.calculate(currentHeight);
+
+			matrices.pushPose();
+			matrices.translate(vehicleConfig.mountX, vehicleConfig.mountHeight, vehicleConfig.mountZ);
+
+			if (vehicleConfig.rotationYDeg !== 0) {
+				matrices.rotateY(vehicleConfig.rotationYDeg / 180.0 * Math.PI);
+			}
+
+			// 1. Base (fixed)
+			if (pantoModels["p_base"]) {
+				ctx.drawCarModel(pantoModels["p_base"], carIndex, matrices);
+			}
+
+			// 2. Lower arm (p1)
+			matrices.pushPose();
+			matrices.translate(0, base.y, base.z);
+			matrices.rotateX(angles.angle1);
+			matrices.translate(0, -base.y, -base.z);
+			if (pantoModels["p1"]) {
+				ctx.drawCarModel(pantoModels["p1"], carIndex, matrices);
+			}
+
+			// 3. Upper arm (p2)
+			{
+				matrices.pushPose();
+				matrices.translate(0, elbow.y, elbow.z);
+				matrices.rotateX(angles.angle2);
+				matrices.translate(0, -elbow.y, -elbow.z);
+				if (pantoModels["p2"]) {
+					ctx.drawCarModel(pantoModels["p2"], carIndex, matrices);
+				}
+
+				// 4. Contact shoe / skid (p3)
+				{
+					matrices.pushPose();
+					matrices.translate(0, tip.y, tip.z);
+					matrices.rotateX(-angles.angle1 - angles.angle2);
+					matrices.translate(0, -tip.y, -tip.z);
+					if (pantoModels["p3"]) {
+						ctx.drawCarModel(pantoModels["p3"], carIndex, matrices);
+					}
+					matrices.popPose();
+				}
+				matrices.popPose();
+			}
+			matrices.popPose();
+
+			// 5. Guide / coupling rod (p4) [Optional]
+			if (hasP4 && pantoModels["p4"]) {
+				matrices.pushPose();
+				matrices.translate(0, p4_base.y, p4_base.z);
+				matrices.rotateX(angles.angle4);
+				matrices.translate(0, -p4_base.y, -p4_base.z);
+				ctx.drawCarModel(pantoModels["p4"], carIndex, matrices);
+				matrices.popPose();
+			}
+
+			matrices.popPose();
+		}
+	};
+}
