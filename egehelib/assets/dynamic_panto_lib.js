@@ -110,6 +110,125 @@ function getAllPossibleIntersections(train, index, pantoVec1Local, pantoVec2Loca
     return result;
 }
 
+var _msdRigidSegmentsCache = {};
+
+/**
+ * Searches and calculates intersections with MSD Rigid Catenary (Rijit Katener)
+ */
+function getAllPossibleIntersectionsMSDRigid(train, index, pantoVec1Local, pantoVec2Local, lowerBound, upperBound) {
+	if (!POSSIBILITY_FLAG) return [];
+
+	let pantoVec1Glob = getGlobalPosFromLocalCoords(train, pantoVec1Local, index);
+	let pantoVec2Glob = getGlobalPosFromLocalCoords(train, pantoVec2Local, index);
+
+	let trainCarRotations = train.lastCarRotation[index];
+	let projectPlaneNormal = new Vector3f(0, 1, 0)
+		.rotZ(trainCarRotations.z())
+		.rotX(trainCarRotations.x())
+		.rotY(trainCarRotations.y());
+
+	let msdData;
+	try {
+		msdData = Packages.top.mcmtr.mod.client.MSDMinecraftClientData.getInstance();
+	} catch (e) {
+		return [];
+	}
+
+	if (!msdData || !msdData.rigidCatenaryWrapperList) return [];
+
+	let rigidCatenaryWrapperList = msdData.rigidCatenaryWrapperList;
+	let iterator = rigidCatenaryWrapperList.object2ObjectEntrySet().iterator();
+	let result = [];
+
+	let pMinX = Math.min(pantoVec1Glob.x(), pantoVec2Glob.x());
+	let pMaxX = Math.max(pantoVec1Glob.x(), pantoVec2Glob.x());
+	let pMinZ = Math.min(pantoVec1Glob.z(), pantoVec2Glob.z());
+	let pMaxZ = Math.max(pantoVec1Glob.z(), pantoVec2Glob.z());
+
+	while (iterator.hasNext()) {
+		let entry = iterator.next();
+		let wrapper = entry.getValue();
+		if (!wrapper) continue;
+
+		// AABB Bounding Box Check (skip far away catenaries, with curve margin)
+		if (wrapper.startVector && wrapper.endVector) {
+			let sX = wrapper.startVector.x, sZ = wrapper.startVector.z;
+			let eX = wrapper.endVector.x, eZ = wrapper.endVector.z;
+			let minX = Math.min(sX, eX) - 35.0;
+			let maxX = Math.max(sX, eX) + 35.0;
+			let minZ = Math.min(sZ, eZ) - 35.0;
+			let maxZ = Math.max(sZ, eZ) + 35.0;
+
+			if (pMaxX < minX || pMinX > maxX || pMaxZ < minZ || pMinZ > maxZ) {
+				continue;
+			}
+		}
+
+		let rigid = wrapper.getRigidCatenary();
+		if (!rigid || !rigid.rigidCatenaryMath) continue;
+		let math = rigid.rigidCatenaryMath;
+
+		let shapeStr = "QUADRATIC";
+		let vRadius = 0;
+		try {
+			if (typeof math.getShape === "function") shapeStr = String(math.getShape());
+			if (typeof math.getVerticalRadius === "function") vRadius = math.getVerticalRadius();
+		} catch (eShape) {}
+
+		let cacheKey = (wrapper.hexId || String(wrapper)) + "_" + shapeStr + "_" + vRadius;
+		let segments = _msdRigidSegmentsCache[cacheKey];
+
+		if (!segments) {
+			segments = [];
+			let addSegment = function(x1, z1, x2, z2, x3, z3, x4, z4, xs1, zs1, xs2, zs2, xs3, zs3, xs4, zs4, y1, y2) {
+				let segY1 = y1;
+				let segY2 = y2;
+				if (isNaN(segY1) || isNaN(segY2)) {
+					let startY = wrapper.startVector ? wrapper.startVector.y : 0;
+					let endY = wrapper.endVector ? wrapper.endVector.y : startY;
+					if (isNaN(segY1)) segY1 = (startY + endY) * 0.5;
+					if (isNaN(segY2)) segY2 = segY1;
+				}
+				segments.push({
+					vecA: new Vector3f((x1 + x2) * 0.5, segY1, (z1 + z2) * 0.5),
+					vecB: new Vector3f((x3 + x4) * 0.5, segY2, (z3 + z4) * 0.5)
+				});
+			};
+
+			try {
+				let RenderRigidClass = Packages.top.mcmtr.core.data.RigidCatenaryMath.RenderRigidCatenary || Packages.top.mcmtr.core.data.RigidCatenaryMath$RenderRigidCatenary;
+				math.render(new RenderRigidClass({
+					renderRigidCatenary: addSegment
+				}));
+			} catch (e1) {
+				try {
+					math.render(addSegment);
+				} catch (e2) {}
+			}
+			_msdRigidSegmentsCache[cacheKey] = segments;
+		}
+
+		for (let s = 0; s < segments.length; s++) {
+			let seg = segments[s];
+			let pantoIntersects = tryGetProjectedIntersection(seg.vecA, seg.vecB, pantoVec1Glob, pantoVec2Glob, projectPlaneNormal);
+			if (pantoIntersects && pantoIntersects[2] < upperBound && pantoIntersects[2] > lowerBound) {
+				result.push({
+					wireCoef: pantoIntersects[0],
+					pantoCoef: pantoIntersects[1],
+					signedDistance: pantoIntersects[2],
+					vecA: seg.vecA,
+					vecB: seg.vecB,
+					catenaryRef: rigid,
+					_cachedShape: shapeStr,
+					_cachedRadius: vRadius
+				});
+			}
+		}
+	}
+
+	return result;
+}
+
 /**
  * 
  * finds projected intersection 
@@ -516,15 +635,23 @@ function getAllPossibleIntersectionsPAW(train, index, pantoVec1Local, pantoVec2L
 function getLowestPossibleIntersectionCombined(train, index, pantoVec1Local, pantoVec2Local, lowerBound, upperBound) {
 	checkAndWarnPawSupport();
 
-	let msdResults;
+	let msdResults = [];
 	try {
 		msdResults = getAllPossibleIntersections(train, index, pantoVec1Local, pantoVec2Local, lowerBound, upperBound);
-	} catch (e) {
+	} catch (e1) {
 		msdResults = [];
 	}
 
-	if (msdResults.length > 0) {
-		return msdResults.reduce((min, current) => min.signedDistance < current.signedDistance ? min : current);
+	let msdRigidResults = [];
+	try {
+		msdRigidResults = getAllPossibleIntersectionsMSDRigid(train, index, pantoVec1Local, pantoVec2Local, lowerBound, upperBound);
+	} catch (e2) {
+		msdRigidResults = [];
+	}
+
+	let allMsd = msdResults.concat(msdRigidResults);
+	if (allMsd.length > 0) {
+		return allMsd.reduce((min, current) => min.signedDistance < current.signedDistance ? min : current);
 	}
 
 	let pawResults = getAllPossibleIntersectionsPAW(train, index, pantoVec1Local, pantoVec2Local, lowerBound, upperBound);
@@ -643,30 +770,47 @@ function updateCachedCatenaryPerCar(train, state, i, config, lowerBound, upperBo
 	var p2 = new Vector3f(1.0, 4.12, config.wireDetectZ);
 
 	if (state.dynPantoCached && state.dynPantoCached[i]) {
-		var trainCarRotations = train.lastCarRotation[i];
-		var projectPlaneNormal = new Vector3f(0, 1, 0)
-			.rotZ(trainCarRotations.z())
-			.rotX(trainCarRotations.x())
-			.rotY(trainCarRotations.y());
+		var cachedItem = state.dynPantoCached[i];
+		var isRigidOutdated = false;
+		if (cachedItem.catenaryRef && cachedItem.catenaryRef.rigidCatenaryMath && cachedItem._cachedShape) {
+			try {
+				var curMath = cachedItem.catenaryRef.rigidCatenaryMath;
+				var curShape = String(curMath.getShape ? curMath.getShape() : "");
+				var curRadius = curMath.getVerticalRadius ? curMath.getVerticalRadius() : 0;
+				if (curShape !== cachedItem._cachedShape || curRadius !== cachedItem._cachedRadius) {
+					isRigidOutdated = true;
+				}
+			} catch (eRef) {}
+		}
 
-		var pantoVec1Glob = getGlobalPosFromLocalCoords(train, p1, i);
-		var pantoVec2Glob = getGlobalPosFromLocalCoords(train, p2, i);
-
-		var vecA = state.dynPantoCached[i].vecA;
-		var vecB = state.dynPantoCached[i].vecB;
-		var projectedIntersection = tryGetProjectedIntersection(vecA, vecB, 
-			pantoVec1Glob, pantoVec2Glob, projectPlaneNormal);
-
-		if (!projectedIntersection) {
-			state.dynPantoCached[i] = getLowestPossibleIntersectionCombined(train, i, p1, p2, lower, upper);
-		} else if ((projectedIntersection[0] < 0 || projectedIntersection[0] > 1) ||
-				 (projectedIntersection[1] < 0 || projectedIntersection[1] > 1) || 
-				 (projectedIntersection[2] < lower || projectedIntersection[2] > upper)) {
+		if (isRigidOutdated) {
 			state.dynPantoCached[i] = getLowestPossibleIntersectionCombined(train, i, p1, p2, lower, upper);
 		} else {
-			state.dynPantoCached[i].wireCoef = projectedIntersection[0];
-			state.dynPantoCached[i].pantoCoef = projectedIntersection[1];
-			state.dynPantoCached[i].signedDistance = projectedIntersection[2];
+			var trainCarRotations = train.lastCarRotation[i];
+			var projectPlaneNormal = new Vector3f(0, 1, 0)
+				.rotZ(trainCarRotations.z())
+				.rotX(trainCarRotations.x())
+				.rotY(trainCarRotations.y());
+
+			var pantoVec1Glob = getGlobalPosFromLocalCoords(train, p1, i);
+			var pantoVec2Glob = getGlobalPosFromLocalCoords(train, p2, i);
+
+			var vecA = state.dynPantoCached[i].vecA;
+			var vecB = state.dynPantoCached[i].vecB;
+			var projectedIntersection = tryGetProjectedIntersection(vecA, vecB, 
+				pantoVec1Glob, pantoVec2Glob, projectPlaneNormal);
+
+			if (!projectedIntersection) {
+				state.dynPantoCached[i] = getLowestPossibleIntersectionCombined(train, i, p1, p2, lower, upper);
+			} else if ((projectedIntersection[0] < 0 || projectedIntersection[0] > 1) ||
+					 (projectedIntersection[1] < 0 || projectedIntersection[1] > 1) || 
+					 (projectedIntersection[2] < lower || projectedIntersection[2] > upper)) {
+				state.dynPantoCached[i] = getLowestPossibleIntersectionCombined(train, i, p1, p2, lower, upper);
+			} else {
+				state.dynPantoCached[i].wireCoef = projectedIntersection[0];
+				state.dynPantoCached[i].pantoCoef = projectedIntersection[1];
+				state.dynPantoCached[i].signedDistance = projectedIntersection[2];
+			}
 		}
 	} else if (state.pantoRateLimit && state.pantoRateLimit.shouldUpdate()) {
 		state.dynPantoCached[i] = getLowestPossibleIntersectionCombined(train, i, p1, p2, lower, upper);
@@ -899,7 +1043,26 @@ function createPantoRigFromText(objText, overrides) {
 		},
 		calculate: function(currentHeight) {
 			var pantoAngle1 = 0, pantoAngle2 = 0, pantoAngle4 = 0;
-			var ik = tryFind2dInverseKinematicsPanto(base.z, base.y, tip.z, currentHeight, l1, l2);
+
+			// Natural folding Z-compensation for low / park heights:
+			// Within normal catenary tracking range (>= 1.10m), targetZ is fixed at tip.z to stay centered on the wire.
+			// Below 1.10m (lowering to roof / depot park), smoothly adjust targetZ towards the elbow
+			// so the lower arm (p1) can fold completely flat to the roof instead of forcing the elbow to stick out into the air.
+			var targetZ = tip.z;
+			if (currentHeight < 1.10) {
+				var tFold = Math.max(0, Math.min(1.0, (1.10 - currentHeight) / (1.10 - 0.40)));
+				var smoothFold = tFold * tFold * (3.0 - 2.0 * tFold);
+				var shiftZ = (elbow.z < base.z) ? -0.035 : 0.035;
+				targetZ = tip.z + smoothFold * shiftZ;
+			}
+
+			var ik = tryFind2dInverseKinematicsPanto(base.z, base.y, targetZ, currentHeight, l1, l2);
+			if (!ik) {
+				// Fallback clamp if height is below physically reachable limit
+				var minReachH = base.y + Math.abs(l1 - l2) + 0.05;
+				var safeH = Math.max(currentHeight, minReachH);
+				ik = tryFind2dInverseKinematicsPanto(base.z, base.y, targetZ, safeH, l1, l2);
+			}
 			if (ik) {
 				var v = (Math.sign(ik[0].theta2) === Math.sign(restTheta2)) ? ik[0] : ik[1];
 				pantoAngle1 = -(v.theta1 - baseAngle1);
