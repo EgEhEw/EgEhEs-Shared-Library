@@ -1,6 +1,6 @@
 # Dynamic Pantograph (MTR / JCM)
 
-It all started because I wanted to make the pantograph in my Blockbench model dynamic. Later, I wanted to ensure compatibility not only with the MSD mode but also with the pantograph and wire modes, and it works really well. Anyway, I then placed the pantograph I created in Blockbench into the folders as p1, p2, p3, and pbase, but the Blockbench export doesn’t save the OBJ files into those groups. So I created a simple `objgroupfix.js` script, which easily solved the grouping issue. ~~But I had another problem: this time, the angle on the pantograph’s arm was wrong. Since the math behind this was a bit too much for me, I had to ask Claude to create `pivotfix.js` for me. Because those mathematical calculations were giving me.~~
+It all started because I wanted to make the pantograph in my Blockbench model dynamic. Later, I wanted to ensure compatibility not only with the MSD mode but also with the pantograph and wire modes, and it works really well. Anyway, I then placed the pantograph I created in Blockbench into the folders as p1, p2, p3, and pbase, but the Blockbench export doesn’t save the OBJ files into those groups. So I created a simple `objgroupfix.js` script, which easily solved the grouping issue.
 
 I'm sharing this so that the trains made with Blockbench also have dynamic pantographs
 
