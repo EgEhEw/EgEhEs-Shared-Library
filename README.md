@@ -2,8 +2,6 @@
 
 It all started because I wanted to make the pantograph in my Blockbench model dynamic. Later, I wanted to ensure compatibility not only with the MSD mode but also with the pantograph and wire modes, and it works really well. Anyway, I then placed the pantograph I created in Blockbench into the folders as p1, p2, p3, and pbase, but the Blockbench export doesn’t save the OBJ files into those groups. So I created a simple `objgroupfix.js` script, which easily solved the grouping issue.
 
-I'm sharing this so that the trains made with Blockbench also have dynamic pantographs
-
 The original dynamic pantograph library was developed by [HarryTheCat](https://github.com/MaratMadiev). I’d recommend checking it out.
 
 ## What it actually does
