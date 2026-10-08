@@ -11,8 +11,8 @@
 var PANTO_MODEL_PATH = ""; // Pantograph OBJ file path Example: var PANTO_MODEL_PATH = "mtr:panto/EXAMPLE_panto.obj"
 var PANTO_MODEL_NAME = "";           // Display label (can be any string) Example: var PANTO_MODEL_NAME = "My cool Panto"
 
-var WIRE_TRACKING_REFERENCE = 1.4851; // REFERENCE - wire tracking is calculated relative to this value
-var NO_WIRE_PARK_HEIGHT = 1.366;      // Fixed height the pantograph rests at when there's no wire
+var WIRE_TRACKING_REFERENCE = 1.000; // REFERENCE - wire tracking is calculated relative to this value
+var NO_WIRE_PARK_HEIGHT = 1.000;      // Fixed height the pantograph rests at when there's no wire
 
 var ENABLE_DEPOT_PARK = true;         // Enables or disables depot parking mode
 var DEPOT_PARK_HEIGHT = 0.4;          // Lowered pantograph height when train is parked in depot (not on route)
@@ -136,5 +136,4 @@ function render(ctx, state, train) {
     if (panto) {
         panto.renderAll(ctx, state, train, PANTO_VEHICLE_CONFIG);
     }
-}
 }
